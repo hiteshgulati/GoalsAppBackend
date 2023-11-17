@@ -1,0 +1,18 @@
+version: '3.2'
+services:
+  postgresdb:
+    image: postgres:15.2
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD_FILE: /run/secrets/SECRETS_POSTGRES_PASSWORD
+      PGDATA: /data/postgres
+    ports:
+      - "5433:5432"
+    volumes:
+       - ./pg_data:/data/postgres
+    secrets:
+      - SECRETS_POSTGRES_PASSWORD
+
+secrets:
+  SECRETS_POSTGRES_PASSWORD:
+    file: ./secrets/POSTGRES_PASSWORD
