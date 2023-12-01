@@ -4,6 +4,7 @@ from typing import Union, Optional
 from pydantic import BaseModel
 from enum import Enum, IntEnum
 from utils.emails import Msg91Mailer
+from utils.sms import Msg91SMSClient
 from config import Settings, get_settings
 from utils.db import get_db
 from models.users import UserReg, UserTable
@@ -38,7 +39,22 @@ class UserRegistration(BaseModel):
 
 
 @router.post("/register/mobile_otp", tags=["Registration"])
-def request_mobile_otp_for_registration(isd_code: str, mobile_number: str):
+def request_mobile_otp_for_registration(
+    isd_code: str, 
+    mobile_number: str,
+    settings: Settings = Depends(get_settings)
+    ):
+    
+    mailer = Msg91SMSClient(
+        authkey=settings.MSG91_AUTHKEY
+    )
+
+    mailer.send_otp_sms(
+        mobile_number=isd_code + "" + mobile_number,
+        otp="123456",
+        dur_mins_str="2"
+    )
+    
     return {"otp_send_status": False}
 
 @router.post("/register/email_otp", tags=["Registration"])
