@@ -78,40 +78,54 @@ class UserTable(User, table=True):
         description="User's updation timestamp",
     )
 
-class UserOTP(SQLModel, table=True):
-    user_uuid: uuid_pkg.UUID = Field(
-        default_factory=uuid_pkg.uuid4,
+class PhoneOTP(SQLModel, table=True):
+    isd_phone_str: str = Field(
         primary_key=True,
         nullable=False,
-        description="The UUID of the user",
-    )
-    otp_type: OTPChannels  = Field(
-        description="The channel to which the OTP was sent",
+        description="A mobile number",
     )
     otp: str = Field(
         max_length=16,
-        description="The OTP of the user",
+        nullable = True,
+        description="The OTP sent to the phone",
     )
     otp_expires_at: datetime.datetime = Field(
         description="The expiry timestamp of the OTP",
+        nullable = True
     )
 
-class RegistrationOTP(SQLModel, table=True):
-    request_uuid: str = Field(
-        primary_key=True,
-        nullable=False,
-        description="An otp request",
-    )
-    otp_type: OTPChannels  = Field(
-        description="The channel to which the OTP was sent",
-    )
-    otp: str = Field(
-        max_length=16,
-        description="The OTP of the user",
-    )
-    otp_expires_at: datetime.datetime = Field(
-        description="The expiry timestamp of the OTP",
-    )
+# class EmailOTP(SQLModel, table=True):
+#     email_addr: str = Field(
+#         primary_key=True,
+#         nullable=False,
+#         description="An email address",
+#     )
+#     otp: str = Field(
+#         max_length=16,
+#         nullable = True,
+#         description="The OTP sent to the email",
+#     )
+#     otp_expires_at: datetime.datetime = Field(
+#         description="The expiry timestamp of the OTP",
+#         nullable = True
+#     )
+
+# class RegistrationOTP(SQLModel, table=True):
+#     request_uuid: str = Field(
+#         primary_key=True,
+#         nullable=False,
+#         description="An otp request",
+#     )
+#     otp_type: OTPChannels  = Field(
+#         description="The channel to which the OTP was sent",
+#     )
+#     otp: str = Field(
+#         max_length=16,
+#         description="The OTP of the user",
+#     )
+#     otp_expires_at: datetime.datetime = Field(
+#         description="The expiry timestamp of the OTP",
+#     )
 
 class InviteCodes(SQLModel, table=True):
     invite_uuid: uuid_pkg.UUID = Field(
@@ -136,6 +150,10 @@ class UserPasswordHash(SQLModel, table=True):
         nullable=False,
         description="The UUID of the user",
     )
-    password_hash: OTPChannels  = Field(
-        description="The channel to which the OTP was sent",
+    password_hash: str  = Field(
+        description="The hash of the user's password",
+    )
+    last_updated_at: datetime.datetime = Field(
+        description="The update timestamp of the password",
+        nullable = True
     )

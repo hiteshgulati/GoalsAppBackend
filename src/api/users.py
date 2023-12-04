@@ -1,14 +1,20 @@
 import logging
-from fastapi import APIRouter, Depends
-from typing import Union, Optional
+from fastapi import APIRouter, Depends, Request, Query
+from fastapi.exceptions import HTTPException
+from typing import Union, Optional, Annotated
 from pydantic import BaseModel
 from enum import Enum, IntEnum
 from utils.emails import Msg91Mailer
-from utils.sms import Msg91SMSClient
+from utils.sms import Msg91SMSClient, is_isd_code_approved
 from config import Settings, get_settings
 from utils.db import get_db
 from models.users import UserReg, UserTable
-from sqlmodel import Session
+from models.users import PhoneOTP
+from sqlmodel import Session, select
+from utils.throttle import limiter
+from datetime import datetime, timedelta
+import random
+import json
 import uuid
 import datetime
 
@@ -22,49 +28,90 @@ class GenderEnum(str, Enum):
     female = 'female'
     other = 'other'
 
-
-class UserRegistration(BaseModel):
-    name: str
-    gender: GenderEnum
-    age: int
-    isd_code: str
-    phone: str
-    phone_otp: str
-    email: str
-    email_otp: str
-    password: str
-    invite_code: str
-    aadhar: Optional[str] = None
-    pan: Optional[str] = None
-
-
-@router.post("/register/mobile_otp", tags=["Registration"])
+@router.post("/register/mobile-otp", tags=["Registration"])
+@limiter.limit("50/hour")
 def request_mobile_otp_for_registration(
-    isd_code: str, 
-    mobile_number: str,
+    request: Request,
+    isd_code: Annotated[str, Query(example="91")],
+    mobile_number: Annotated[str, Query(pattern="^\d{4,15}$")],
     settings: Settings = Depends(get_settings)
     ):
+
+    # Check if isd code is whitelisted (i.e tested + known to be functional)
+    if not is_isd_code_approved(settings.APPROVED_ISD_CODES, isd_code):
+        raise HTTPException(status_code=403, detail="ISD code not approved")
     
+    # Generate a random OTP
+    random_otp: str = ""
+    for _ in range(6):
+        random_otp = random_otp + str(random.randint(0, 9))
+    expiry_time = datetime.datetime.now(tz=datetime.timezone.utc) + timedelta(minutes=2)
+
+    # Store the OTP message and update expiry
+    db = get_db()
+    isd_phone_str = isd_code+""+mobile_number
+    otp_record = PhoneOTP(
+        isd_phone_str=isd_phone_str,
+        otp=random_otp,
+        otp_expires_at=expiry_time
+    )
+    with Session(db) as session:
+        statement = select(PhoneOTP).where(PhoneOTP.isd_phone_str == isd_phone_str)
+        result = session.exec(statement).first()
+
+        # if otp record does not exist, create it
+        if result is None:
+            result = otp_record
+        else:
+            result.otp = random_otp
+            result.otp_expires_at = expiry_time 
+
+        # persist the data to the database
+        session.add(result)
+        session.commit()
+        session.refresh(result)
+
+    # Send the OTP via SMS
     mailer = Msg91SMSClient(
         authkey=settings.MSG91_AUTHKEY
     )
 
-    mailer.send_otp_sms(
+    send_resp = mailer.send_otp_sms(
         mobile_number=isd_code + "" + mobile_number,
-        otp="123456",
+        otp=random_otp,
         dur_mins_str="2"
     )
+    print(f"SMS request sent for {isd_phone_str}. Response Text: {send_resp}")
+
+    # Parse response (if possible)
+    try:
+        parsed_resp = json.loads(send_resp)
+        if "type" in parsed_resp:
+            if parsed_resp["type"] == "success":
+                return { "otp_send_status": True }
+            else:
+                raise HTTPException(status_code=500, detail="Unexpected response")
+        else:
+            raise HTTPException(status_code=500, detail="Missing information")
+    except:
+        raise HTTPException(status_code=500, detail="Parsing error")
     
-    return {"otp_send_status": False}
+    
 
-@router.post("/register/email_otp", tags=["Registration"])
-def request_email_otp_for_registration(email: str):
-    return {"otp_send_status": False}
+# @router.post("/register/email_otp", tags=["Registration"])
+# def request_email_otp_for_registration(email: str):
+#     return {"otp_send_status": False}
 
-@router.post("/register/new_user", tags=["Registration"])
+@router.post("/register/new-user", tags=["Registration"])
 def new_user(
         user_reg: UserReg,
     ):
+
+    # TODO: Validate input
+    # TODO: Check Invite Code validity
+    # TODO: Hash password and store the hash
+    # TODO: Send Welcome Email
+
     db = get_db()
     new_user_record = UserTable(
         user_uuid = uuid.uuid4(),
@@ -88,57 +135,67 @@ def new_user(
     return {"user_added": False}
 
 
-@router.post("/auth/mobile/otp", tags=["Auth"])
-def request_otp(isd_code: str, mobile_number: str):
-    return {"otp_send_status": False}
+# @router.post("/auth/mobile/otp", tags=["Auth"])
+# def request_otp(isd_code: str, mobile_number: str):
+#     return {"otp_send_status": False}
 
 
-@router.post("/auth/mobile/token", tags=["Auth"])
-def request_token_using_mobile(isd_code: str, mobile_number: str, otp: str):
-    return {
-        "token": "sample_jwt"
-    }
+# @router.post("/auth/mobile/token", tags=["Auth"])
+# def request_token_using_mobile(isd_code: str, mobile_number: str, otp: str):
+#     return {
+#         "token": "sample_jwt"
+#     }
 
 
-@router.post("/auth/email/token", tags=["Auth"])
-def request_token_using_email(email: str, password: str):
+@router.post("/auth/login/mobile-password", tags=["Auth"])
+def request_token_using_mobile_password(isd_code: str, phone: str, password: str):
+    # TODO: Throttle to slow down brute force attacks
+    # TODO: Find user from phone number in database
+    # TODO: Find user's hashed password
+    # TODO: Hash input password and check
+    # TODO: Generate token with an expiry timestamp
+    # TODO: Send token
+
     return {"token": "sample_jwt"}
 
 
-@router.post("/auth/email/password_reset", tags=["Auth"])
-def request_password_reset_code_using_email(
-    email: str,
-    settings: Settings = Depends(get_settings)
-):
-    mailer = Msg91Mailer(
-        authkey=settings.MSG91_AUTHKEY,
-        domain=settings.MSG91_DOMAIN,
-        from_email=settings.MSG91_FROM_EMAIL
-    )
+# @router.post("/auth/email/password_reset", tags=["Auth"])
+# def request_password_reset_code_using_email(
+#     email: str,
+#     settings: Settings = Depends(get_settings)
+# ):
+#     mailer = Msg91Mailer(
+#         authkey=settings.MSG91_AUTHKEY,
+#         domain=settings.MSG91_DOMAIN,
+#         from_email=settings.MSG91_FROM_EMAIL
+#     )
 
-    mailer.send_email_using_template(
-        to_email=email,
-        to_name="User",
-        template_id="global_otp",
-        variables={
-            "company_name": settings.name,
-            "otp": 123456
-        }
-    )
+#     mailer.send_email_using_template(
+#         to_email=email,
+#         to_name="User",
+#         template_id="global_otp",
+#         variables={
+#             "company_name": settings.name,
+#             "otp": 123456
+#         }
+#     )
 
-    return {"message": "processed"}
+#     return {"message": "processed"}
 
 
-@router.put("/auth/email/update_password", tags=["Auth"])
-def update_password_using_reset_code(email: str, code: str, new_password: str):
-    return {"message": "updated"}
+# @router.put("/auth/email/update_password", tags=["Auth"])
+# def update_password_using_reset_code(email: str, code: str, new_password: str):
+#     return {"message": "updated"}
 
 
 @router.get("/me", tags=["Users"])
 def get_user_profile():
+    # TODO: Authenticate token
+    # TODO: Find user from token
+    # TODO: Return user profile data
     return {"user": {}}
 
 
-@router.patch("/profile", tags=["Users"])
-def update_user():
-    return {"user": {}}
+# @router.patch("/profile", tags=["Users"])
+# def update_user():
+#     return {"user": {}}
