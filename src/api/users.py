@@ -49,7 +49,7 @@ def request_mobile_otp_for_registration(
     for _ in range(6):
         random_otp = random_otp + str(random.randint(0, 9))
     expiry_time = datetime.datetime.now(
-        tz=datetime.timezone.utc) + timedelta(minutes=2)
+        tz=datetime.timezone.utc) + timedelta(minutes=5)
 
     # Store the OTP message and update expiry
     db = get_db()
@@ -84,7 +84,7 @@ def request_mobile_otp_for_registration(
     send_resp = mailer.send_otp_sms(
         mobile_number=isd_code + "" + mobile_number,
         otp=random_otp,
-        dur_mins_str="2"
+        dur_mins_str="5"
     )
     print(f"SMS request sent for {isd_phone_str}. Response Text: {send_resp}")
 
