@@ -10,3 +10,5 @@ black==23.11.0
 isort==5.12.0
 psycopg2==2.9.9
 slowapi==0.1.8
+email-validator==2.1.0.post1
+passlib[bcrypt]==1.7.4
