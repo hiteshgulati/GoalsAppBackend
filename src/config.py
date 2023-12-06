@@ -16,7 +16,7 @@ class Settings(BaseSettings):
     MSG91_FROM_EMAIL: str = "no-reply@devmailer.embetter.in" 
     DB_CONN_STRING: str = "postgresql://admin:test@172.17.0.1:5433/postgres"
     APPROVED_ISD_CODES: str = os.getenv("APPROVED_ISD_CODES", "91")
-
+    JWT_SECRET_KEY:str = os.getenv("JWT_SECRET_KEY", "c05abfd605ae50561b407d0090c24c95b17fce2cd473367fd1fef89721fb76cf")
 @lru_cache()
 def get_settings() -> BaseSettings:
     log.info("Loading config settings from the environment...")

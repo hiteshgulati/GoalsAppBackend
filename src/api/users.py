@@ -6,7 +6,7 @@ from pydantic import BaseModel
 from enum import Enum, IntEnum
 from utils.emails import Msg91Mailer
 from utils.sms import Msg91SMSClient, is_isd_code_approved
-from utils.security import get_password_hash
+from utils.security import get_password_hash, verify_password, create_access_token
 from config import Settings, get_settings
 from utils.db import get_db
 from models.users import UserReg, UserTable
@@ -225,15 +225,56 @@ def new_user(
 
 
 @router.post("/auth/login/mobile-password", tags=["Auth"])
-def request_token_using_mobile_password(isd_code: str, phone: str, password: str):
-    # TODO: Throttle to slow down brute force attacks
-    # TODO: Find user from phone number in database
-    # TODO: Find user's hashed password
-    # TODO: Hash input password and check
-    # TODO: Generate token with an expiry timestamp
-    # TODO: Send token
+@limiter.limit("1/second")
+def request_token_using_mobile_password(
+        request:Request,
+        isd_code: str, 
+        phone: str, 
+        password: str,
+        settings: Settings = Depends(get_settings)
+    ):
+    
+    # Check if isd code is whitelisted (i.e tested + known to be functional)
+    if not is_isd_code_approved(settings.APPROVED_ISD_CODES, isd_code):
+        raise HTTPException(status_code=403, detail="ISD code not approved")
+    
+    # Check if user is registered
+    user_exists = False
+    user_search_result = None
+    db = get_db()
+    with Session(db) as session:
 
-    return {"token": "sample_jwt"}
+        phone_search_statement = select(UserTable).where(
+            UserTable.phone == phone).where(UserTable.isd_code == isd_code)
+        user_search_result = session.exec(phone_search_statement).first()
+
+        if user_search_result is not None:
+            user_exists = True
+
+    if user_exists == False:
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    # Find user's hashed password
+    user_uuid = user_search_result.user_uuid
+    with Session(db) as session:
+        password_hash_search = select(UserPasswordHash).where(UserPasswordHash.user_uuid == user_uuid)
+        pass_hash_search_res = session.exec(password_hash_search).first()
+
+    if pass_hash_search_res is None:
+        raise HTTPException(status_code=500, detail="Unable to verify")
+
+    # Hash input password and check
+    is_pass_ok = verify_password(plain_password=password, hashed_password=pass_hash_search_res.password_hash)
+    if is_pass_ok == False:
+        raise HTTPException(status_code=403, detail="Forbidden")
+    
+    # Generate token with an expiry timestamp
+    token_data = create_access_token(settings.JWT_SECRET_KEY, {
+        "sub": str(user_uuid),
+    })
+
+    # Send token
+    return token_data
 
 
 # @router.post("/auth/email/password_reset", tags=["Auth"])
