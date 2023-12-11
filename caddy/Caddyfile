@@ -1,0 +1,7 @@
+amb-api-dev.embetter.in {
+    reverse_proxy :8000
+}
+
+amb-dev.embetter.in {
+    reverse_proxy :3000
+}
