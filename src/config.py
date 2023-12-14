@@ -10,7 +10,7 @@ class Settings(BaseSettings):
     environment: str = os.getenv("ENVIRONMENT", "dev")
     database_url: AnyUrl = os.environ.get("DATABASE_URL")
     name: str = "Goals App"
-    version: str = "0.1.2"
+    version: str = "0.1.3"
     MSG91_AUTHKEY: str = os.environ.get("MSG91_AUTHKEY")
     MSG91_DOMAIN: str = "devmailer.embetter.in"
     MSG91_FROM_EMAIL: str = "no-reply@devmailer.embetter.in" 

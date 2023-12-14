@@ -25,10 +25,12 @@ class User(SQLModel):
     gender: GenderEnum = Field(
         description="The gender of the user",
     )
-    age: int = Field(
-        description="The age of the user",
-        ge=18,
-        le=100
+    dob: Optional[datetime.datetime] = Field(
+        description="The date of birth of the user",
+        sa_column=Column(
+            DateTime(timezone=True),
+            nullable=True
+        )
     )
     isd_code: str = Field(
         regex="^\d{1,3}$",
@@ -52,6 +54,11 @@ class User(SQLModel):
 
 
 class UserReg(User):
+    age: int = Field(
+        description="The age of the user",
+        ge=18,
+        le=100
+    )
     phone_otp: str = Field(
         regex="^\d{6}$",
         description="The phone OTP of the user",

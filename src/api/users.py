@@ -176,6 +176,17 @@ def new_user(
 
     # Hash password
     hashed_pass = get_password_hash(user_reg.password)
+    # Calculate dob if needed
+    this_year = datetime.datetime.now(tz=datetime.timezone.utc)
+    dob = datetime.datetime(year=this_year.year,month=1,day=1) #default
+    if user_reg.dob is None:
+        dob = dob - datetime.timedelta(days=user_reg.age*365.2425)
+        dob=dob.replace(hour=0)
+        dob=dob.replace(minute=0)
+        dob=dob.replace(second=0)
+        dob=dob.replace(microsecond=0)
+    else:
+        dob = user_reg.dob
 
     # Store the new user details
     user_uuid = uuid.uuid4()
@@ -186,6 +197,7 @@ def new_user(
         name=user_reg.name,
         gender=user_reg.gender,
         age=user_reg.age,
+        dob=dob,
         isd_code=user_reg.isd_code,
         phone=user_reg.phone,
         email=user_reg.email,
@@ -223,6 +235,35 @@ def new_user(
 #         "token": "sample_jwt"
 #     }
 
+@router.post("/auth/login/check-user", tags=["Auth"])
+@limiter.limit("1/second")
+def check_user_exists(
+        request:Request,
+        isd_code: str, 
+        phone: str, 
+        settings: Settings = Depends(get_settings)
+    ):
+    
+    # Check if isd code is whitelisted (i.e tested + known to be functional)
+    if not is_isd_code_approved(settings.APPROVED_ISD_CODES, isd_code):
+        raise HTTPException(status_code=403, detail="ISD code not approved")
+    
+    # Check if user is registered
+    user_exists = False
+    user_search_result = None
+    db = get_db()
+    with Session(db) as session:
+
+        phone_search_statement = select(UserTable).where(
+            UserTable.phone == phone).where(UserTable.isd_code == isd_code)
+        user_search_result = session.exec(phone_search_statement).first()
+
+        if user_search_result is not None:
+            user_exists = True
+
+    return {
+        user_exists: user_exists
+    }
 
 @router.post("/auth/login/mobile-password", tags=["Auth"])
 @limiter.limit("1/second")
