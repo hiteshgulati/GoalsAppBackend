@@ -3,7 +3,7 @@ import uuid as uuid_pkg
 from enum import Enum, IntEnum
 import datetime
 from typing import Optional
-from pydantic import EmailStr
+from pydantic import EmailStr, BaseModel
 
 
 class GenderEnum(str, Enum):
@@ -189,4 +189,28 @@ class UserPasswordHash(SQLModel, table=True):
             DateTime(timezone=True),
             nullable=False
         )
+    )
+
+class UserUpdate(BaseModel):
+    name: Optional[str] = Field(
+        max_length=255,
+        description="The name of the user",
+    )
+    gender: Optional[GenderEnum] = Field(
+        description="The gender of the user",
+    )
+    dob: Optional[datetime.datetime] = Field(
+        description="The date of birth of the user",
+        sa_column=Column(
+            DateTime(timezone=True),
+            nullable=True
+        )
+    )
+    pan: Optional[str] = Field(
+        max_length=16,
+        description="The user's PAN number",
+    )
+    aadhaar: Optional[str] = Field(
+        max_length=16,
+        description="The user's Aadhaar number",
     )

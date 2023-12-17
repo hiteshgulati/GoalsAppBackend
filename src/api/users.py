@@ -1,17 +1,19 @@
 import logging
-from fastapi import APIRouter, Depends, Request, Query
+from fastapi import APIRouter, Depends, Request, Query, status, Header
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from fastapi.exceptions import HTTPException
+from jose import JWTError
 from typing import Union, Optional, Annotated
 from pydantic import BaseModel
 from enum import Enum, IntEnum
 from utils.emails import Msg91Mailer
 from utils.sms import Msg91SMSClient, is_isd_code_approved
-from utils.security import get_password_hash, verify_password, create_access_token
+from utils.security import get_password_hash, verify_password, create_access_token, oauth2_scheme, resolve_subject_from_token
 from config import Settings, get_settings
 from utils.db import get_db
-from models.users import UserReg, UserTable
+from models.users import UserReg, UserTable, UserUpdate
 from models.users import PhoneOTP, InviteCodes, UserPasswordHash
-from sqlmodel import Session, select
+from sqlmodel import Session, select, text
 from utils.throttle import limiter
 from datetime import datetime, timedelta
 import random
@@ -24,12 +26,41 @@ logger.setLevel(logging.INFO)
 
 router = APIRouter()
 
+async def get_user(db, user_uuid):
+    user_search_result = None
+    with Session(db) as session:
 
-class GenderEnum(str, Enum):
-    male = 'male'
-    female = 'female'
-    other = 'other'
+        phone_search_statement = select(UserTable).where(
+            UserTable.user_uuid == user_uuid)
+        user_search_result = session.exec(phone_search_statement).first()
 
+        if user_search_result is not None:
+            return user_search_result        
+
+    return None 
+    
+
+
+async def get_current_user(
+        token = Depends(oauth2_scheme), 
+        db = Depends(get_db),
+        settings: Settings = Depends(get_settings)
+        ):
+    credentials_exception = HTTPException(
+        status_code= status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    try:
+        user_uuid = resolve_subject_from_token(token=token, secret_key=settings.JWT_SECRET_KEY)
+        if user_uuid is None:
+            raise credentials_exception
+    except JWTError:
+        raise credentials_exception
+    user = await get_user(db=db, user_uuid=user_uuid)
+    if user is None:
+        raise credentials_exception
+    return user
 
 @router.post("/register/mobile-otp", tags=["Registration"])
 @limiter.limit("50/hour")
@@ -265,6 +296,60 @@ def check_user_exists(
         user_exists: user_exists
     }
 
+@router.post("/auth/oauth2_password_login", tags=["Auth"])
+@limiter.limit("1/second")
+def oauth2_login(
+        request:Request,
+        form_data: Annotated[OAuth2PasswordRequestForm, Depends()],
+        settings: Settings = Depends(get_settings)
+    ):
+    
+    # Check if user is registered
+    user_exists = False
+    user_search_result = None
+    db = get_db()
+    with Session(db) as session:
+        query = text(
+            """
+            SELECT * from UserTable
+            WHERE CONCAT(isd_code, phone) = :username
+            """
+        )
+        user_search_result = session.execute(statement=query, params={ "username" : form_data.username }).first()
+
+        if user_search_result is not None:
+            user_exists = True
+
+    if user_exists == False:
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    # Find user's hashed password
+    user_uuid = user_search_result.user_uuid
+    with Session(db) as session:
+        password_hash_search = select(UserPasswordHash).where(UserPasswordHash.user_uuid == user_uuid)
+        pass_hash_search_res = session.exec(password_hash_search).first()
+
+    if pass_hash_search_res is None:
+        raise HTTPException(status_code=500, detail="Unable to verify")
+
+    # Hash input password and check
+    password = form_data.password
+    is_pass_ok = verify_password(plain_password=password, hashed_password=pass_hash_search_res.password_hash)
+    if is_pass_ok == False:
+        raise HTTPException(status_code=403, detail="Forbidden")
+    
+    # Generate token with an expiry timestamp
+    token_data = create_access_token(settings.JWT_SECRET_KEY, {
+        "sub": str(user_uuid),
+    })
+
+    # Send token
+    return {
+        "token_type" : "bearer",
+        "access_token" : token_data["token"],
+        "exp" : token_data["exp"]
+    }
+
 @router.post("/auth/login/mobile-password", tags=["Auth"])
 @limiter.limit("1/second")
 def request_token_using_mobile_password(
@@ -348,13 +433,30 @@ def request_token_using_mobile_password(
 
 
 @router.get("/me", tags=["Users"])
-def get_user_profile():
-    # TODO: Authenticate token
-    # TODO: Find user from token
-    # TODO: Return user profile data
-    return {"user": {}}
+def get_user_profile(user = Depends(get_current_user)):
+    return user
 
+@router.patch("/me", tags=["Users"])
+def update_user(updates: UserUpdate, user: UserTable = Depends(get_current_user), db = Depends(get_db)):
+    
+    # Apply updates
+    if updates.name is not None:
+        user.name = updates.name
+    
+    if updates.gender is not None:
+        user.gender = updates.gender
 
-# @router.patch("/profile", tags=["Users"])
-# def update_user():
-#     return {"user": {}}
+    if updates.dob is not None:
+        user.dob = updates.dob
+
+    if updates.pan is not None:
+        user.pan = updates.pan
+
+    if updates.aadhaar is not None:
+        user.aadhaar = updates.aadhaar
+        
+    with Session(db) as session:
+        session.add(user)
+        session.commit()
+        session.refresh(user)
+    return user
