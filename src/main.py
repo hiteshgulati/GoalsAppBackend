@@ -19,6 +19,7 @@ whitelisted_origins = [
     "http://localhost:3000",
 ]
 
+
 def create_application(whitelisted_origins) -> FastAPI:
     settings = Settings()
     application = FastAPI(title=settings.name, version=settings.version)
@@ -32,12 +33,15 @@ def create_application(whitelisted_origins) -> FastAPI:
     )
     return application
 
+
 app = create_application(whitelisted_origins)
+
 
 @app.on_event("startup")
 async def startup_event():
     log.info("Starting up...")
     init_db()
+
 
 @app.on_event("shutdown")
 async def shutdown_event():

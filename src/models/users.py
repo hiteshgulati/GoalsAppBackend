@@ -4,17 +4,18 @@ from enum import Enum, IntEnum
 import datetime
 from typing import Optional
 from pydantic import EmailStr, BaseModel
+from sqlalchemy.dialects.postgresql import TEXT
 
 
 class GenderEnum(str, Enum):
-    male = 'male'
-    female = 'female'
-    other = 'other'
+    male = "male"
+    female = "female"
+    other = "other"
 
 
 class OTPChannels(str, Enum):
-    email = 'email'
-    phone = 'phone'
+    email = "email"
+    phone = "phone"
 
 
 class User(SQLModel):
@@ -27,10 +28,7 @@ class User(SQLModel):
     )
     dob: Optional[datetime.datetime] = Field(
         description="The date of birth of the user",
-        sa_column=Column(
-            DateTime(timezone=True),
-            nullable=True
-        )
+        sa_column=Column(DateTime(timezone=True), nullable=True),
     )
     isd_code: str = Field(
         regex="^\d{1,3}$",
@@ -54,11 +52,7 @@ class User(SQLModel):
 
 
 class UserReg(User):
-    age: int = Field(
-        description="The age of the user",
-        ge=18,
-        le=100
-    )
+    age: int = Field(description="The age of the user", ge=18, le=100)
     phone_otp: str = Field(
         regex="^\d{6}$",
         description="The phone OTP of the user",
@@ -85,17 +79,11 @@ class UserTable(User, table=True):
     )
     created_at: datetime.datetime = Field(
         description="User's creation timestamp",
-        sa_column=Column(
-            DateTime(timezone=True),
-            nullable=False
-        )
+        sa_column=Column(DateTime(timezone=True), nullable=False),
     )
     updated_at: datetime.datetime = Field(
         description="User's updation timestamp",
-        sa_column=Column(
-            DateTime(timezone=True),
-            nullable=False
-        )
+        sa_column=Column(DateTime(timezone=True), nullable=False),
     )
 
 
@@ -113,11 +101,9 @@ class PhoneOTP(SQLModel, table=True):
     )
     otp_expires_at: datetime.datetime = Field(
         description="The expiry timestamp of the OTP",
-        sa_column=Column(
-            DateTime(timezone=True),
-            nullable=False
-        )
+        sa_column=Column(DateTime(timezone=True), nullable=False),
     )
+
 
 # class EmailOTP(SQLModel, table=True):
 #     email_addr: str = Field(
@@ -163,12 +149,12 @@ class InviteCodes(SQLModel, table=True):
     usage_count: int = Field(
         nullable=False,
         default=0,
-        description="The number of time the invite code has been used"
+        description="The number of time the invite code has been used",
     )
     max_usages: int = Field(
         description="The maximum number of times the invite code is allowed to be used",
         nullable=False,
-        default=50
+        default=50,
     )
 
 
@@ -180,16 +166,13 @@ class UserPasswordHash(SQLModel, table=True):
         description="The UUID of the user",
     )
     password_hash: str = Field(
-        description="The hash of the user's password",
-        nullable=False
+        description="The hash of the user's password", nullable=False
     )
     last_updated_at: datetime.datetime = Field(
         description="The update timestamp of the password",
-        sa_column=Column(
-            DateTime(timezone=True),
-            nullable=False
-        )
+        sa_column=Column(DateTime(timezone=True), nullable=False),
     )
+
 
 class UserUpdate(BaseModel):
     name: Optional[str] = Field(
@@ -201,10 +184,7 @@ class UserUpdate(BaseModel):
     )
     dob: Optional[datetime.datetime] = Field(
         description="The date of birth of the user",
-        sa_column=Column(
-            DateTime(timezone=True),
-            nullable=True
-        )
+        sa_column=Column(DateTime(timezone=True), nullable=True),
     )
     pan: Optional[str] = Field(
         max_length=16,
@@ -213,4 +193,23 @@ class UserUpdate(BaseModel):
     aadhaar: Optional[str] = Field(
         max_length=16,
         description="The user's Aadhaar number",
+    )
+
+
+class UserPhoto(SQLModel, table=True):
+    user_uuid: uuid_pkg.UUID = Field(
+        default_factory=uuid_pkg.uuid4,
+        primary_key=True,
+        nullable=False,
+        description="The UUID of the user",
+    )
+    media_type: str = Field(
+        description="The MIME media type of the image format",
+    )
+    data: str = Field(
+        sa_column=Column(TEXT), description="The base64 encoded string of the image"
+    )
+    last_updated_at: datetime.datetime = Field(
+        description="The update timestamp of the profile image",
+        sa_column=Column(DateTime(timezone=True), nullable=False),
     )
